@@ -138,6 +138,34 @@ def renderView(request):
       response['Cache-Control'] = 'no-cache'
       return response
 
+    if format == 'json_dygraph':
+      labels = ['Time']
+      datapoints = [[ts * 1000] for ts in range(data[0].start, data[0].end, data[0].step)]
+      for series in data:
+        labels.append(series.name)
+        for i, point in enumerate(series):
+          if point is None and 'jsonp' in requestOptions:
+            datapoints[i].append('null')
+          else:
+            datapoints[i].append(point)
+
+      if 'jsonp' in requestOptions:
+        # Dygraphs expects Date object, so we avoid the json encoder and construct
+        # the output manually so as to allow for inline creation of Date objects
+        line_template = '[new Date(%%s)%s]' % ''.join([', %s'] * len(data))
+        lines = [line_template % tuple(points) for points in datapoints]
+        result_json = '{"labels" : %s, "data" : [%s]}' % (json.dumps(labels), ', '.join(lines))
+        result = "%s(%s)" % (requestOptions['jsonp'], result_json)
+      else:
+        result = json.dumps({'labels' : labels, 'data' : datapoints})
+
+      response = HttpResponse(content=result, mimetype='application/json')
+      response['Pragma'] = 'no-cache'
+      response['Cache-Control'] = 'no-cache'
+
+      log.rendering('Total json_dygraph rendering time %.6f' % (time() - start))
+      return response
+
     if format == 'raw':
       response = HttpResponse(mimetype='text/plain')
       for series in data:

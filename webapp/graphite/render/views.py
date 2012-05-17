@@ -161,6 +161,22 @@ def renderView(request):
 
         response = HttpResponse(content=result, mimetype='application/json')
 
+      if jsonFormat == 'rickshaw':
+        series_list = []
+        for series in data:
+          series_data = []
+          timestamps = range(series.start, series.end, series.step)
+          for ts,value in zip(timestamps,series):
+            series_data.append( dict(x=ts, y=value) )
+          series_list.append( dict(name=series.name, data=series_data) )
+
+        if 'jsonp' in requestOptions:
+          response = HttpResponse(
+            content="%s(%s)" % (requestOptions['jsonp'], json.dumps(series_list)),
+            mimetype='text/javascript')
+        else:
+          response = HttpResponse(content=json.dumps(series_list), mimetype='application/json')
+
       # Graphite format
       else:
         series_data = []

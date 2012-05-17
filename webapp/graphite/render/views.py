@@ -29,7 +29,7 @@ from graphite.remote_storage import HTTPConnectionWithTimeout
 from graphite.logger import log
 from graphite.render.evaluator import evaluateTarget
 from graphite.render.attime import parseATTime
-from graphite.render.functions import PieFunctions
+from graphite.render.functions import PieFunctions, normalize
 from graphite.render.hashing import hashRequest, hashData
 from graphite.render.glyph import GraphTypes
 
@@ -121,50 +121,66 @@ def renderView(request):
       return response
 
     if format == 'json':
-      series_data = []
-      for series in data:
-        timestamps = range(series.start, series.end, series.step)
-        datapoints = zip(series, timestamps)
-        series_data.append( dict(target=series.name, datapoints=datapoints) )
+      jsonFormat = requestOptions.get('jsonFormat')
 
-      if 'jsonp' in requestOptions:
-        response = HttpResponse(
-          content="%s(%s)" % (requestOptions['jsonp'], json.dumps(series_data)),
-          mimetype='text/javascript')
+      if jsonFormat == 'dygraph':
+        # Normalize the steps of the series to match since there's not a great
+        # way to fill in points that one series has but another doesn't
+        series_data, start, end, step = normalize([data])
+        if 'jsonp' in requestOptions:
+          null_value = 'null' # when using jsonp we render the json by hand
+        else:
+          null_value = None
+
+        labels = ['Time']
+        datapoints = [[ts * 1000] for ts in range(start, end, step)]
+        for series in series_data:
+          labels.append(series.name)
+
+          for index,dataline in enumerate(datapoints):
+            ts = dataline[0]/1000 # Timestamp in seconds
+            if ts < series.start or ts > series.end:
+              dataline.append(null_value)
+            else:
+              offset = (series.start - start)/step
+              point = series[index - offset]
+              if point is None:
+                dataline.append(null_value)
+              else:
+                dataline.append(point)
+
+        if 'jsonp' in requestOptions:
+          # Dygraphs expects Date object, so we avoid the json encoder and construct
+          # the output manually so as to allow for inline creation of Date objects
+          line_template = '[new Date(%%s)%s]' % ''.join([', %s'] * len(data))
+          lines = [line_template % tuple(points) for points in datapoints]
+          result_json = '{"labels" : %s, "data" : [%s]}' % (json.dumps(labels), ', '.join(lines))
+          result = "%s(%s)" % (requestOptions['jsonp'], result_json)
+        else:
+          result = json.dumps({'labels' : labels, 'data' : datapoints})
+
+        response = HttpResponse(content=result, mimetype='application/json')
+
+      # Graphite format
       else:
-        response = HttpResponse(content=json.dumps(series_data), mimetype='application/json')
+        series_data = []
+        for series in data:
+          timestamps = range(series.start, series.end, series.step)
+          datapoints = zip(series, timestamps)
+          series_data.append( dict(target=series.name, datapoints=datapoints) )
 
+        if 'jsonp' in requestOptions:
+          response = HttpResponse(
+            content="%s(%s)" % (requestOptions['jsonp'], json.dumps(series_data)),
+            mimetype='text/javascript')
+        else:
+          response = HttpResponse(content=json.dumps(series_data), mimetype='application/json')
+
+      log.rendering('Total json rendering time %.6f' % (time() - start))
       response['Pragma'] = 'no-cache'
       response['Cache-Control'] = 'no-cache'
       return response
 
-    if format == 'json_dygraph':
-      labels = ['Time']
-      datapoints = [[ts * 1000] for ts in range(data[0].start, data[0].end, data[0].step)]
-      for series in data:
-        labels.append(series.name)
-        for i, point in enumerate(series):
-          if point is None and 'jsonp' in requestOptions:
-            datapoints[i].append('null')
-          else:
-            datapoints[i].append(point)
-
-      if 'jsonp' in requestOptions:
-        # Dygraphs expects Date object, so we avoid the json encoder and construct
-        # the output manually so as to allow for inline creation of Date objects
-        line_template = '[new Date(%%s)%s]' % ''.join([', %s'] * len(data))
-        lines = [line_template % tuple(points) for points in datapoints]
-        result_json = '{"labels" : %s, "data" : [%s]}' % (json.dumps(labels), ', '.join(lines))
-        result = "%s(%s)" % (requestOptions['jsonp'], result_json)
-      else:
-        result = json.dumps({'labels' : labels, 'data' : datapoints})
-
-      response = HttpResponse(content=result, mimetype='application/json')
-      response['Pragma'] = 'no-cache'
-      response['Cache-Control'] = 'no-cache'
-
-      log.rendering('Total json_dygraph rendering time %.6f' % (time() - start))
-      return response
 
     if format == 'raw':
       response = HttpResponse(mimetype='text/plain')
@@ -238,6 +254,8 @@ def parseOptions(request):
     requestOptions['format'] = queryParams['format']
     if 'jsonp' in queryParams:
       requestOptions['jsonp'] = queryParams['jsonp']
+    if 'jsonFormat' in queryParams:
+      requestOptions['jsonFormat'] = queryParams['jsonFormat']
   if 'noCache' in queryParams:
     requestOptions['noCache'] = True
 

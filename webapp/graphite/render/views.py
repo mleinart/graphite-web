@@ -177,6 +177,20 @@ def renderView(request):
         else:
           response = HttpResponse(content=json.dumps(series_list), mimetype='application/json')
 
+      if jsonFormat == 'highcharts':
+        series_list = []
+        for series in data:
+          timestamps = range(series.start, series.end, series.step)
+          series_data = zip(timestamps,series)
+          series_list.append( dict(name=series.name, data=series_data) )
+
+        if 'jsonp' in requestOptions:
+          response = HttpResponse(
+            content="%s(%s)" % (requestOptions['jsonp'], json.dumps(series_list)),
+            mimetype='text/javascript')
+        else:
+          response = HttpResponse(content=json.dumps(series_list), mimetype='application/json')
+
       # Graphite format
       else:
         series_data = []

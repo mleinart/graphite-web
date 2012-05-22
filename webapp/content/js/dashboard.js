@@ -526,11 +526,22 @@ function initDashboard () {
           text: "Finder",
           handler: showDashboardFinder
         }, {
+          text: "Load Template",
+          handler: showTemplateFinder
+        }, {
+          text: "Save As Template",
+          handler: saveTemplate
+        }, {
           id: 'dashboard-save-button',
           text: "Save",
           handler: function (item, e) {
                      sendSaveRequest(dashboardName);
                    },
+          disabled: (dashboardName == null) ? true : false
+        }, {
+          id: 'show-json-url-button',
+          text: "Show JSON URL",
+          handler: showJsonURL,
           disabled: (dashboardName == null) ? true : false
         }, {
           text: "Save As",
@@ -1625,6 +1636,53 @@ function showShareWindow() {
   win.show();
 }
 
+function showJsonURL() {
+  urlparts = dashboardURL.split('/');
+  dashboard_name = urlparts.pop();
+  dashboard_prefix = urlparts.pop();
+
+  if( dashboard_prefix == 'dashboard' ) {
+    urlparts.push(dashboard_prefix);
+    urlparts.push('load');
+  } else {
+    urlparts.push('load_template');
+    urlparts.push(dashboard_prefix);
+  }
+  urlparts.push(dashboard_name);
+  var jsonURL = urlparts.join('/');
+
+  var win = new Ext.Window({
+    title: "Share Dashboard",
+    width: 600,
+    height: 125,
+    layout: 'border',
+    modal: true,
+    items: [
+      {
+        xtype: "label",
+        region: 'north',
+        style: "text-align: center;",
+        text: "URL to JSON dashboard configuration."
+      }, {
+        xtype: 'textfield',
+        region: 'center',
+        value: jsonURL,
+        editable: false,
+        style: "text-align: center; font-size: large;",
+        listeners: {
+          focus: function (field) { field.selectText(); }
+        }
+      }
+    ],
+    buttonAlign: 'center',
+    buttons: [
+      {text: "Close", handler: function () { win.close(); } }
+    ]
+  });
+  win.show();
+}
+
+
 /* Other stuff */
 var targetGrid;
 var activeMenu;
@@ -2230,6 +2288,57 @@ function saveDashboard() {
   );
 }
 
+function saveTemplate() {
+  var nameField = new Ext.form.TextField({
+    id: 'name-field',
+    fieldLabel: "Template Name",
+    width: 240,
+    allowBlank: false,
+    align: 'center',
+  });
+
+  var win;
+
+  function save() {
+    sendSaveTemplateRequest(nameField.getValue());
+    win.close();
+  }
+
+  win = new Ext.Window({
+    title: "Change Graph Size",
+    width: 400,
+    height: 100,
+    resizable: false,
+    layout: 'form',
+    labelAlign: 'right',
+    labelWidth: 120,
+    items: [nameField],
+    buttonAlign: 'center',
+    buttons: [
+      {text: 'Ok', handler: save},
+      {text: 'Cancel', handler: function () { win.close(); } }
+    ]
+  });
+  win.show();
+}
+
+function sendSaveTemplateRequest(name) {
+  Ext.Ajax.request({
+    url: "/dashboard/save_template/" + name,
+    method: 'POST',
+    params: {
+      state: Ext.encode( getState() )
+    },
+    success: function (response) {
+               var result = Ext.decode(response.responseText);
+               if (result.error) {
+                 Ext.Msg.alert("Error", "There was an error saving this dashboard as a template: " + result.error);
+               }
+             },
+    failure: failedAjaxCall
+  });
+}
+
 function sendSaveRequest(name) {
   Ext.Ajax.request({
     url: "/dashboard/save/" + name,
@@ -2254,6 +2363,21 @@ function sendLoadRequest(name) {
                var result = Ext.decode(response.responseText);
                if (result.error) {
                  Ext.Msg.alert("Error Loading Dashboard", result.error);
+               } else {
+                 applyState(result.state);
+               }
+             },
+    failure: failedAjaxCall
+  });
+}
+
+function sendLoadTemplateRequest(name, host_id) {
+  Ext.Ajax.request({
+    url: "/dashboard/load_template/" + name + "/" + host_id,
+    success: function (response) {
+               var result = Ext.decode(response.responseText);
+               if (result.error) {
+                 Ext.Msg.alert("Error Loading Template", result.error);
                } else {
                  applyState(result.state);
                }
@@ -2346,9 +2470,25 @@ function deleteDashboard(name) {
   });
 }
 
+function deleteTemplate(name) {
+  Ext.Ajax.request({
+    url: "/dashboard/delete_template/" + name,
+    success: function (response) {
+      var result = Ext.decode(response.responseText);
+      if (result.error) {
+        Ext.Msg.alert("Error", "Failed to delete template '" + name + "': " + result.error);
+      } else {
+        Ext.Msg.alert("Template Deleted", "The " + name + " template was deleted successfully.");
+      }
+    },
+    failure: failedAjaxCall
+  });
+}
+
 function setDashboardName(name) {
   dashboardName = name;
   var saveButton = Ext.getCmp('dashboard-save-button');
+  var showJsonUrlButton = Ext.getCmp('show-json-url-button');
 
   if (name == null) {
     dashboardURL = null;
@@ -2372,6 +2512,7 @@ function setDashboardName(name) {
     navBar.setTitle(name + " - (" + dashboardURL + ")");
     saveButton.setText('Save "' + name + '"');
     saveButton.enable();
+    showJsonUrlButton.enable();
   }
 }
 
@@ -2442,6 +2583,178 @@ function updateNavBar(region) {
   //TODO prompt the user to save their dashboard and refresh for them
 
   NAV_BAR_REGION = region;
+}
+
+// Template Finder
+function showTemplateFinder() {
+  var win;
+  var templatesList;
+  var queryField;
+  var hostidField;
+  var templatesStore = new Ext.data.JsonStore({
+    url: "/dashboard/find_template/",
+    method: 'GET',
+    params: {query: "e"},
+    fields: ['name'],
+    root: 'templates',
+    listeners: {
+      beforeload: function (store) {
+                    store.setBaseParam('query', queryField.getValue());
+                  }
+    }
+  });
+
+  var hostidsStore = new Ext.data.JsonStore({
+    url: "/metrics/list/",
+    method: 'GET',
+    fields: ['path'],
+    root: 'metrics',
+  });
+
+  function openSelected() {
+    var selected = templatesList.getSelectedRecords();
+    if (selected.length > 0) {
+      sendLoadTemplateRequest(selected[0].data.name, hostidField.getValue());
+    }
+    win.close();
+  }
+
+  function deleteSelected() {
+    var selected = templatesList.getSelectedRecords();
+    if (selected.length > 0) {
+      var record = selected[0];
+      var name = record.data.name;
+
+      Ext.Msg.confirm(
+       "Delete Template",
+        "Are you sure you want to delete the " + name + " template?",
+        function (button) {
+          if (button == 'yes') {
+            deleteTemplate(name);
+            templatesStore.remove(record);
+            templatesList.refresh();
+          }
+        }
+      );
+    }
+  }
+
+  templatesList = new Ext.list.ListView({
+    columns: [
+      {header: 'Template', width: 1.0, dataIndex: 'name', sortable: false}
+    ],
+    columnSort: false,
+    emptyText: "No templates found",
+    hideHeaders: true,
+    listeners: {
+      selectionchange: function (listView, selections) {
+                         if (listView.getSelectedRecords().length == 0) {
+                           Ext.getCmp('finder-open-button').disable();
+                           Ext.getCmp('finder-delete-button').disable();
+                         } else {
+                           if (hostidField.getValue()) {
+                             Ext.getCmp('finder-open-button').enable();
+                           }
+                           Ext.getCmp('finder-delete-button').enable();
+                         }
+                       },
+
+    },
+    overClass: '',
+    region: 'center',
+    reserveScrollOffset: true,
+    singleSelect: true,
+    store: templatesStore,
+    style: "background-color: white;"
+  });
+
+  var lastQuery = null;
+  var queryUpdateTask = new Ext.util.DelayedTask(
+    function () {
+      var currentQuery = queryField.getValue();
+      if (lastQuery != currentQuery) {
+        templatesStore.load();
+      }
+      lastQuery = currentQuery;
+    }
+  );
+
+  var lastHostid = null;
+  var hostidUpdateTask = new Ext.util.DelayedTask(
+    function () {
+      var currentHostid = hostidField.getValue();
+      if (lastHostid != currentHostid) {
+        hostidsStore.load();
+      }
+      lastHostid = currentHostid;
+    }
+  );
+
+  queryField = new Ext.form.TextField({
+    region: 'south',
+    emptyText: "filter template listing",
+    enableKeyEvents: true,
+    listeners: {
+      keyup: function (field, e) {
+                  if (e.getKey() == e.ENTER) {
+                    sendLoadRequest(field.getValue());
+                    win.close();
+                  } else {
+                    queryUpdateTask.delay(FINDER_QUERY_DELAY);
+                  }
+                }
+    }
+  });
+
+  hostidField = new Ext.form.ComboBox({
+    id: 'hostid-field',
+
+    triggerAction:'all',
+    typeAhead:false,
+    mode:'remote',
+    minChars:0,
+    forceSelection:false,
+    hideTrigger: false,
+    store: hostidsStore,
+    valueField: 'path',
+    displayField: 'path',
+
+    allowBlank: false,
+    region: 'north',
+    emptyText: "apply to the host",
+  });
+
+  win = new Ext.Window({
+    title: "Template Finder",
+    width: 400,
+    height: 500,
+    layout: 'border',
+    modal: true,
+    items: [
+      hostidField,
+      templatesList,
+      queryField,
+    ],
+    buttons: [
+      {
+        id: 'finder-open-button',
+        text: "Open",
+        disabled: true,
+        handler: openSelected
+      }, {
+        id: 'finder-delete-button',
+        text: "Delete",
+        disabled: true,
+        handler: deleteSelected
+      }, {
+        text: "Close",
+        handler: function () { win.close(); }
+      }
+    ]
+  });
+  templatesStore.load();
+  hostidsStore.load();
+  win.show();
 }
 
 // Dashboard Finder

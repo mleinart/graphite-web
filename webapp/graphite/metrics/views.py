@@ -131,10 +131,35 @@ def find_view(request):
 
     content = json.dumps({ 'metrics' : results })
     response = HttpResponse(content, mimetype='application/json')
-
   else:
     return HttpResponseBadRequest(content="Invalid value for 'format' parameter", mimetype="text/plain")
 
+  response['Pragma'] = 'no-cache'
+  response['Cache-Control'] = 'no-cache'
+  return response
+
+
+def list_view(request):
+  hosts = []
+  store = STORE
+  try:
+    query = str( request.REQUEST['query'] )
+  except:
+    return HttpResponseBadRequest(content="Missing required parameter 'query'", mimetype="text/plain")
+
+  for t in list( store.find('*') ):
+    for env in list( store.find('%s.*' % t.metric_path) ):
+      for app in list( store.find('%s.*' % env.metric_path) ):
+        for dc in list( store.find('%s.*' % app.metric_path) ):
+          for id in list( store.find('%s.*' % dc.metric_path) ):
+            if query in id.metric_path: 
+              hosts.append({'path': id.metric_path})
+
+  hosts.sort(key=lambda node: node['path'])
+
+  content = json.dumps({ 'metrics' : hosts })
+  response = HttpResponse(content, mimetype='application/json')
+ 
   response['Pragma'] = 'no-cache'
   response['Cache-Control'] = 'no-cache'
   return response
@@ -272,7 +297,6 @@ def tree_json(nodes, base_path, wildcards=False):
 
 def pickle_nodes(nodes):
   nodes_info = []
-
   for node in nodes:
     info = dict(path=node.path, is_leaf=node.is_leaf)
     if node.is_leaf:

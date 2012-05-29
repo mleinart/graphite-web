@@ -94,6 +94,10 @@ def safeMap(function, values):
   if safeValues:
     return map(function, values)
 
+def safeAbs(value):
+  if value is None: return None
+  return abs(a)
+
 def lcm(a,b):
   if a == b: return a
   if a < b: (a,b) = (b,a) #ensure a > b
@@ -530,6 +534,24 @@ def scaleToSeconds(requestContext, seriesList, seconds):
     for i,value in enumerate(series):
       factor = seconds * 1.0 / series.step
       series[i] = safeMul(value,factor)
+  return seriesList
+
+def absolute(requestContext, seriesList):
+  """
+  Takes one metric or a wildcard seriesList and applies the mathematical abs function to each
+  datapoint transforming it to its absolute value.
+
+  Example:
+
+  .. code-block:: none
+
+    &target=absolute(Server.instance01.threads.busy)
+    &target=absolute(Server.instance*.threads.busy)
+  """
+  for series in seriesList:
+    series.name = "absolute(%s)" % (series.name)
+    for i,value in enumerate(series):
+      series[i] = safeAbs(value)
   return seriesList
 
 def offset(requestContext, seriesList, factor):
@@ -1424,6 +1446,31 @@ def sortByMinima(requestContext, seriesList):
     return cmp(min(x), min(y))
   newSeries = [series for series in seriesList if max(series) > 0]
   newSeries.sort(compare)
+  return newSeries
+
+def useSeriesAbove(requestContext, seriesList, value, search, replace):
+  """
+  Compares the maximum of each series against the given `value`. If the series
+  maximum is greater than `value`, the regular expression search and replace is
+  applied against the series name to plot a related metric
+
+  e.g. given useSeriesAbove(ganglia.metric1.reqs,10,'reqs','time'),
+  the response time metric will be plotted only when the maximum value of the
+  corresponding request/s metric is > 10
+
+  .. code-block:: none
+
+    &target=useSeriesAbove(ganglia.metric1.reqs,10,"reqs","time")
+  """
+  newSeries = []
+
+  for series in seriesList:
+    newname = re.sub(search, replace, series.name)
+    if max(series) > value:
+      n = evaluateTarget(requestContext, newname)
+      if n is not None and len(n) > 0:
+        newSeries.append(n[0])
+
   return newSeries
 
 def mostDeviant(requestContext, n, seriesList):
@@ -2434,6 +2481,7 @@ SeriesFunctions = {
   'summarize' : summarize,
   'smartSummarize' : smartSummarize,
   'hitcount'  : hitcount,
+  'absolute' : absolute,
 
   # Calculate functions
   'movingAverage' : movingAverage,
@@ -2466,6 +2514,7 @@ SeriesFunctions = {
   'limit' : limit,
   'sortByMaxima' : sortByMaxima,
   'sortByMinima' : sortByMinima,
+  'useSeriesAbove': useSeriesAbove,
   'exclude' : exclude,
 
   # Data Filter functions

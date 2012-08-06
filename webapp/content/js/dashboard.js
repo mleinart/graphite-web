@@ -724,12 +724,13 @@ function initDashboard () {
   // Load initial dashboard state if it was passed in
   if (initialState) {
     applyState(initialState);
-    navBar.collapse();
+    navBar.collapse(false);
   }
 
   if(window.location.hash != '')
   {
     sendLoadRequest(window.location.hash.substr(1));
+    navBar.collapse(false);
   }
 
   if (initialError) {

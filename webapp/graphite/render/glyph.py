@@ -731,14 +731,13 @@ class LineGraph(Graph):
 
     pixelRange = self.area['ymax'] - self.area['ymin']
 
+    if self.logBase:
+      lowestValue = _get_factor(lowestValue, self.logBase)
+      highestValue = _get_factor(highestValue, self.logBase)
+      value = _get_factor(value, self.logBase)
+
     relativeValue = value - lowestValue
     valueRange = highestValue - lowestValue
-
-    if self.logBase:
-        if value <= 0:
-            return None
-        relativeValue = math.log(value, self.logBase) - math.log(lowestValue, self.logBase)
-        valueRange = math.log(highestValue, self.logBase) - math.log(lowestValue, self.logBase)
 
     pixelToValueRatio = pixelRange / valueRange
     valueInPixels = pixelToValueRatio * relativeValue
@@ -1031,12 +1030,18 @@ class LineGraph(Graph):
     self.yBottom = self.yStep * math.floor( yMinValue / self.yStep ) #start labels at the greatest multiple of yStep <= yMinValue
     self.yTop = self.yStep * math.ceil( yMaxValue / self.yStep ) #Extend the top of our graph to the lowest yStep multiple >= yMaxValue
 
-    if self.logBase and yMinValue > 0:
-      self.yBottom = math.pow(self.logBase, math.floor(math.log(yMinValue, self.logBase)))
-      self.yTop = math.pow(self.logBase, math.ceil(math.log(yMaxValue, self.logBase)))
-    elif self.logBase and yMinValue <= 0:
-        raise GraphError('Logarithmic scale specified with a dataset with a '
-                         'minimum value less than or equal to zero')
+    if self.logBase:
+      if yMinValue < 0:
+        self.yBottom = - math.pow(self.logBase, math.ceil(math.log(abs(yMinValue), self.logBase)))
+      elif yMinValue > 0:
+        self.yBottom = math.pow(self.logBase, math.floor(math.log(yMinValue, self.logBase)))
+      else:
+        self.yBottom = 0
+      if yMaxValue < 0:
+        self.yTop = - math.pow(self.logBase, math.floor(math.log(abs(yMaxValue), self.logBase)))
+      elif yMaxValue > 0:
+        self.yTop = math.pow(self.logBase, math.ceil(math.log(yMaxValue, self.logBase)))
+      else: self.yTop = 0
 
     if 'yMax' in self.params:
       if self.params['yMax'] == 'max':
@@ -1276,9 +1281,8 @@ class LineGraph(Graph):
       self.area['xmax'] = xMax
 
   def getYLabelValues(self, minYValue, maxYValue, yStep=None):
-    vals = []
     if self.logBase:
-      vals = list( logrange(self.logBase, minYValue, maxYValue) )
+      vals = list( _logrange(self.logBase, minYValue, maxYValue) )
     else:
       vals = list( frange(minYValue, maxYValue, yStep) )
     return vals
@@ -1668,12 +1672,37 @@ def find_x_times(start_dt, unit, step):
   return (dt, x_delta)
 
 
-def logrange(base, scale_min, scale_max):
-  current = scale_min
-  if scale_min > 0:
-      current = math.floor(math.log(scale_min, base))
-  factor = current
+def _logrange(base, scale_min, scale_max):
+  factor = math.floor(_get_factor(scale_min, base)) - 1
+  current = _raise_factor(base, factor)
   while current < scale_max:
-     current = math.pow(base, factor)
-     yield current
-     factor += 1
+    factor += 1
+    current = _raise_factor(base, factor)
+    yield current
+
+def _get_factor(x, base=math.e):
+  ''' Convenience wrapper around math.log to return our factors for log scale.
+  Will return the 'power' to be passed into _raise_factor() to result in the
+  next-highest factor (or next-lowest in the case of 'negative' x).
+  '''
+  # log(-1) is 0 but we want base^1 instead for next-lowest factor
+  if x == -1: return -1
+  if x > 0:
+    return math.log(x, base)
+  elif x < 0:
+    return - math.log(abs(x), base)
+  elif x == 0:
+    return 0
+
+def _raise_factor(base, power):
+  ''' Convenience utility to raise our logarithmic base to a power for use in
+  Y-axis scales. Negative powers are interpreted as the negative of the result
+  of the absolute power and 0 is interpreted as 0
+  '''
+  if power > 0:
+    return math.pow(base,power)
+  elif power < 0:
+    return - math.pow(base,abs(power))
+  elif power == 0:
+    return 0
+

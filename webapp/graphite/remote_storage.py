@@ -203,7 +203,7 @@ class RemoteReader(object):
         completion_event.wait(settings.REMOTE_FETCH_TIMEOUT)
         cached_results = self.request_cache.get(url)
         if cached_results is None:
-          raise Exception("Passive remote fetch failed to find cached results")
+          raise Exception("Passive remote fetch failed to find cached results for %s" % url)
         else:
           return cached_results
 

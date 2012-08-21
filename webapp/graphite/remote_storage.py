@@ -9,6 +9,7 @@ from graphite.node import LeafNode, BranchNode
 from graphite.intervals import Interval, IntervalSet
 from graphite.readers import FetchInProgress
 from graphite.logger import log
+from graphite.render.hashing import compactHash
 
 try:
   import cPickle as pickle
@@ -53,6 +54,8 @@ class FindRequest(object):
       end = ""
 
     self.cacheKey = "find:%s:%s:%s:%s" % (store.host, query.pattern, start, end)
+    if self.cacheKey > 249:
+      self.cacheKey = compactHash(self.cacheKey)
     self.cachedResult = None
 
   def send(self):

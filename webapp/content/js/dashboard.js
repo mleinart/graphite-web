@@ -2419,10 +2419,10 @@ function applyState(state) {
   //state.timeConfig = {type, quantity, units, untilQuantity, untilUnits, startDate, startTime, endDate, endTime}
   var timeConfig = state.timeConfig
   TimeRange.type = timeConfig.type;
-  TimeRange.relativeStartQuantity = timeConfig.quantity;
-  TimeRange.relativeStartUnits = timeConfig.units;
-  TimeRange.relativeUntilQuantity = timeConfig.untilQuantity;
-  TimeRange.relativeUntilUnits = timeConfig.untilUnits;
+  TimeRange.relativeStartQuantity = timeConfig.quantity || TimeRange.relativeStartQuantity;
+  TimeRange.relativeStartUnits = timeConfig.units || TimeRange.relativeStartUnits;
+  TimeRange.relativeUntilQuantity = timeConfig.untilQuantity || TimeRange.relativeUntilQuantity;
+  TimeRange.relativeUntilUnits = timeConfig.untilUnits || TimeRange.relativeUntilUnits;
   TimeRange.startDate = new Date(timeConfig.startDate);
   TimeRange.startTime = timeConfig.startTime;
   TimeRange.endDate = new Date(timeConfig.endDate);

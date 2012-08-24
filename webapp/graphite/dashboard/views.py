@@ -1,11 +1,6 @@
 import re
 import errno
 
-try:
-  import json
-except ImportError:
-  import simplejson as json
-
 from os.path import getmtime, join, exists
 from urllib import urlencode
 from ConfigParser import ConfigParser
@@ -13,7 +8,7 @@ from django.shortcuts import render_to_response
 from django.http import HttpResponse, QueryDict
 from django.conf import settings
 from graphite.util import json
-from graphite.dashboard.models import Dashboard
+from graphite.dashboard.models import Dashboard, Template
 from graphite.render.views import renderView
 from send_graph import send_graph_email
 
@@ -148,6 +143,46 @@ def dashboard(request, name=None):
   return render_to_response("dashboard.html", context)
 
 
+def template(request, name, host_id):
+  template_conf_missing = False
+
+  try:
+    config.check()
+  except OSError, e:
+    if e.errno == errno.ENOENT:
+      template_conf_missing = True
+    else:
+      raise
+
+  initialError = None
+  debug = request.GET.get('debug', False)
+  theme = request.GET.get('theme', config.ui_config['theme'])
+  css_file = join(settings.CSS_DIR, 'dashboard-%s.css' % theme)
+  if not exists(css_file):
+    initialError = "Invalid theme '%s'" % theme
+    theme = config.ui_config['theme']
+
+  context = {
+    'schemes_json' : json.dumps(config.schemes),
+    'ui_config_json' : json.dumps(config.ui_config),
+    'jsdebug' : debug or settings.JAVASCRIPT_DEBUG,
+    'debug' : debug,
+    'theme' : theme,
+    'initialError' : initialError,
+    'querystring' : json.dumps( dict( request.GET.items() ) ),
+    'dashboard_conf_missing' : template_conf_missing,
+  }
+
+  try:
+    template = Template.objects.get(name=name)
+  except Template.DoesNotExist:
+    context['initialError'] = "Template '%s' does not exist." % name
+  else:
+    context['initialState'] = template.loadState(host_id)
+
+  return render_to_response("dashboard.html", context)
+
+
 def save(request, name):
   # Deserialize and reserialize as a validation step
   state = str( json.dumps( json.loads( request.POST['state'] ) ) )
@@ -163,6 +198,23 @@ def save(request, name):
   return json_response( dict(success=True) )
 
 
+def save_template(request, name):
+  # Deserialize and reserialize as a validation step
+  state = str( json.dumps( json.loads( request.POST['state'] ) ) )
+
+  try:
+    template = Template.objects.get(name=name)
+  except Template.DoesNotExist:
+    template = Template.objects.create(name=name)
+    template.setState(state)
+    template.save()
+  else:
+    template.setState(state)
+    template.save();
+
+  return json_response( dict(success=True) )
+
+
 def load(request, name):
   try:
     dashboard = Dashboard.objects.get(name=name)
@@ -172,6 +224,17 @@ def load(request, name):
   return json_response( dict(state=json.loads(dashboard.state)) )
 
 
+def load_template(request, name, host_id):
+  try:
+    template = Template.objects.get(name=name)
+  except Template.DoesNotExist:
+    return json_response( dict(error="Template '%s' does not exist. " % name) )
+  
+  state = json.loads(template.loadState(host_id))
+  state['name'] = '%s/%s' % (name, host_id)
+  return json_response( dict(state=state) )
+
+
 def delete(request, name):
   try:
     dashboard = Dashboard.objects.get(name=name)
@@ -179,6 +242,16 @@ def delete(request, name):
     return json_response( dict(error="Dashboard '%s' does not exist. " % name) )
   else:
     dashboard.delete()
+    return json_response( dict(success=True) )
+
+
+def delete_template(request, name):
+  try:
+    template = Template.objects.get(name=name)
+  except Dashboard.DoesNotExist:
+    return json_response( dict(error="Template '%s' does not exist. " % name) )
+  else:
+    template.delete()
     return json_response( dict(success=True) )
 
 
@@ -205,6 +278,52 @@ def find(request):
       results.append( dict(name=dashboard.name) )
 
   return json_response( dict(dashboards=results) )
+
+
+def find_template(request):
+  query = request.REQUEST['query']
+  query_terms = set( query.lower().split() )
+  results = []
+
+  # Find all dashboard names that contain each of our query terms as a substring
+  for template in Template.objects.all():
+    name = template.name.lower()
+
+    found = True # blank queries return everything
+    for term in query_terms:
+      if term in name:
+        found = True
+      else:
+        found = False
+        break
+
+    if found:
+      results.append( dict(name=template.name) )
+
+  return json_response( dict(templates=results) )
+
+
+def list_hosts(request):
+  query = request.REQUEST['query']
+  query_terms = set( query.lower().split() )
+  results = []
+
+  # Find all dashboard names that contain each of our query terms as a substring
+  for template in Template.objects.all():
+    name = template.name.lower()
+
+    found = True # blank queries return everything
+    for term in query_terms:
+      if term in name:
+        found = True
+      else:
+        found = False
+        break
+
+    if found:
+      results.append( dict(name=template.name) )
+
+  return json_response( dict(templates=results) )
 
 
 def help(request):

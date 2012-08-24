@@ -10,7 +10,21 @@
  *    distributed under the License is distributed on an "AS IS" BASIS,
  *    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  *    See the License for the specific language governing permissions and
- *    limitations under the License. */
+ *    limitations under the License. 
+ * 
+ * 
+ * ======================================================================
+ * 
+ *     PLEASE DO NOT USE A COMMA AFTER THE FINAL ITEM IN A LIST.
+ * 
+ * ======================================================================
+ * 
+ * It works fine in FF / Chrome, but completely breaks Internet Explorer. 
+ * Thank you.  
+ * 
+*/
+
+
 
 var DEFAULT_WINDOW_WIDTH = 600;
 var DEFAULT_WINDOW_HEIGHT = 400;
@@ -29,6 +43,7 @@ function createComposerWindow(myComposer) {
     '-',
     createToolbarButton('Select a Date Range', 'calBt.gif', toggleWindow(createCalendarWindow) ),
     createToolbarButton('Select Recent Data', 'arrow1.gif', toggleWindow(createRecentWindow) ),
+    createToolbarButton('Open in GraphPlot', 'line_chart.png', function() { window.open('/graphlot/?' + Composer.url.queryString,'_blank') }),
     '-',
     timeDisplay
   ];
@@ -894,10 +909,12 @@ function createFunctionsMenu() {
         {text: 'ScaleToSeconds', handler: applyFuncToEachWithInput('scaleToSeconds', 'Please enter a number of seconds to scale to')},
         {text: 'Offset', handler: applyFuncToEachWithInput('offset', 'Please enter the value to offset Y-values by')},
         {text: 'Derivative', handler: applyFuncToEach('derivative')},
+        {text: 'Time-adjusted Derivative', handler: applyFuncToEachWithInput('perSecond', "Please enter a maximum value if this metric is a wrapping counter (or just leave this blank)", {allowBlank: true})},
         {text: 'Integral', handler: applyFuncToEach('integral')},
         {text: 'Percentile Values', handler: applyFuncToEachWithInput('percentileOfSeries', "Please enter the percentile to use")},
         {text: 'Non-negative Derivative', handler: applyFuncToEachWithInput('nonNegativeDerivative', "Please enter a maximum value if this metric is a wrapping counter (or just leave this blank)", {allowBlank: true})},
         {text: 'Log', handler: applyFuncToEachWithInput('log', 'Please enter a base')},
+        {text: 'Absolute Value', handler: applyFuncToEach('absolute')},
         {text: 'timeShift', handler: applyFuncToEachWithInput('timeShift', 'Shift this metric ___ back in time (examples: 10min, 7d, 2w)', {quote: true})},
         {text: 'Summarize', handler: applyFuncToEachWithInput('summarize', 'Please enter a summary interval (examples: 10min, 1h, 7d)', {quote: true})},
         {text: 'Hit Count', handler: applyFuncToEachWithInput('hitcount', 'Please enter a summary interval (examples: 10min, 1h, 7d)', {quote: true})}
@@ -963,7 +980,12 @@ function createFunctionsMenu() {
         		]},
         {text: 'Color', handler: applyFuncToEachWithInput('color', 'Set the color for this graph target', {quote: true})},
         {text: 'Alpha', handler: applyFuncToEachWithInput('alpha', 'Set the alpha (transparency) for this graph target (between 0.0 and 1.0)')},
-        {text: 'Aggregate By Sum', handler: applyFuncToEach('cumulative')},
+        {text: 'Consolidate By',
+                menu: [
+                        {text: "Sum", handler: applyFuncToEach('consolidateBy', '"sum"')},
+                        {text: "Max", handler: applyFuncToEach('consolidateBy', '"max"')},
+                        {text: "Min", handler: applyFuncToEach('consolidateBy', '"min"')}
+                      ]},
         {text: 'Draw non-zero As Infinite', handler: applyFuncToEach('drawAsInfinite')},
         {text: 'Line Width', handler: applyFuncToEachWithInput('lineWidth', 'Please enter a line width for this graph target')},
         {text: 'Dashed Line', handler: applyFuncToEach('dashed')},
@@ -1075,8 +1097,8 @@ function createOptionsMenu() {
   var xAxisMenu = new Ext.menu.Menu({
     items: [
       menuInputItem("Time Format", "xFormat", "Enter the time format (see Python's datetime.strftime())", /^$/),
-      menuInputItem("Timezone", "tz", "Enter the timezone to display (e.g. UTC or America/Chicago)"),
-      menuInputItem("Point-width Consolidation Threshold", "minXStep", "Enter the closest number of pixels between points before consolidation"),
+      menuInputItem("Timezone", "tz", "Enter the timezone to display (e.g. UTC or America/Chicago)", /^$/),
+      menuInputItem("Point-width Consolidation Threshold", "minXStep", "Enter the closest number of pixels between points before consolidation")
     ]
   });
 
@@ -1115,7 +1137,7 @@ function createOptionsMenu() {
         menu: {
           items: [
             menuCheckItem("Italics", "fontItalic"),
-            menuCheckItem("Bold", "fontBold"),
+            menuCheckItem("Bold", "fontBold")
           ]
         }
       },
@@ -1155,7 +1177,7 @@ function createOptionsMenu() {
       menuCheckItem("Hide Axes", "hideAxes"),
       menuCheckItem("Hide Y-Axis", "hideYAxis"),
       menuCheckItem("Hide Grid", "hideGrid"),
-      menuInputItem("Apply Template", "template", "Enter the name of a template defined in graphTemplates.conf", /^$/),
+      menuInputItem("Apply Template", "template", "Enter the name of a template defined in graphTemplates.conf", /^$/)
     ]
   });
 

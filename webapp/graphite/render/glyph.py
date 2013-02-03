@@ -234,7 +234,7 @@ class Graph:
     if not fill:
       o = self.ctx.get_line_width() / 2.0 #offset for borders so they are drawn as lines would be
       x += o
-      y += o
+      y -= o
       w -= o
       h -= o
     self.ctx.rectangle(x,y,w,h)
@@ -876,15 +876,18 @@ class LineGraph(Graph):
           if self.secondYAxis:
             if 'secondYAxis' in series.options:
               y = self.getYCoord(value, "right")
+              yZero = self.getYCoord(0, "right")
             else:
               y = self.getYCoord(value, "left")
+              yZero = self.getYCoord(0, "left")
           else:
             y = self.getYCoord(value)
+            yZero = self.getYCoord(0)
 
           if y is None:
             value = None
           elif y < 0:
-              y = 0
+            y = 0
 
           if 'drawAsInfinite' in series.options and value > 0:
             self.ctx.move_to(x, self.area['ymax'])
@@ -896,33 +899,37 @@ class LineGraph(Graph):
           if fromNone:
             startX = x
 
-          if self.lineMode == 'staircase':
-            if fromNone:
-              self.ctx.move_to(x, y)
+          if self.lineMode == 'bar':
+            if y < yZero:
+              barTop = y
             else:
+              barTop = yZero
+            barHeight = abs(y - yZero)
+            barWidth = series.xStep / 2
+            barSpace = barWidth / 2
+            self.drawRectangle(x + barSpace, barTop, barWidth, barHeight, fill=True)
+            x += series.xStep
+
+          else:
+            if self.lineMode == 'staircase':
+              if fromNone:
+                self.ctx.move_to(x, y)
+              else:
+                self.ctx.line_to(x, y)
+
+              x += series.xStep
               self.ctx.line_to(x, y)
 
-            x += series.xStep
-            self.ctx.line_to(x, y)
+            elif self.lineMode == 'slope':
+              if fromNone:
+                self.ctx.move_to(x, y)
 
-          elif self.lineMode == 'slope':
-            if fromNone:
-              self.ctx.move_to(x, y)
+              self.ctx.line_to(x, y)
+              x += series.xStep
 
-            self.ctx.line_to(x, y)
-            x += series.xStep
-
-          elif self.lineMode == 'connected':
-            self.ctx.line_to(x, y)
-            x += series.xStep
-
-          elif self.lineMode == 'bar':
-            barwidth=series.xStep / 4;
-            self.ctx.line_to(x - barwidth, self.area['ymax']) 	# go right
-            self.ctx.line_to(x - barwidth, y)			# go up
-            self.ctx.line_to(x + barwidth, y)			# go right
-            self.ctx.line_to(x + barwidth, self.area['ymax'])	# go down
-            x += series.xStep
+            elif self.lineMode == 'connected':
+              self.ctx.line_to(x, y)
+              x += series.xStep
 
           fromNone = False
 
